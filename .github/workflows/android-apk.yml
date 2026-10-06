@@ -1,0 +1,56 @@
+name: Build Android APK
+
+# Free on GitHub Actions. Run it from the "Actions" tab -> "Build Android APK" -> "Run workflow",
+# then download "ALTREX-CODE-android-apk" from the finished run. The APK is debug-signed, so it installs
+# directly on any Android phone (allow "Install unknown apps" once).
+on:
+  workflow_dispatch:
+  push:
+    tags: ['mobile-v*']
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Test the mobile core
+        run: pnpm --filter @altrex/desktop exec vitest run src/renderer/src/mobile
+
+      - name: Build the web UI for the phone
+        run: pnpm --filter @altrex/desktop build:mobile
+
+      - name: Create and sync the Android project
+        working-directory: apps/mobile
+        run: |
+          pnpm exec cap add android
+          pnpm exec cap sync android
+
+      - name: Build the APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ALTREX-CODE-android-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
